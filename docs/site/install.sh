@@ -2,8 +2,8 @@
 # Edge-accelerated remote installer for Faiz Control Center (`faiz-dash`).
 set -euo pipefail
 
-FAIZ_REPO_URL="${FAIZ_REPO_URL:-https://github.com/Jamie-z-Jianmin/faiz-control-center.git}"
-FAIZ_TARBALL_URL="${FAIZ_TARBALL_URL:-https://github.com/Jamie-z-Jianmin/faiz-control-center/archive/refs/heads}"
+FAIZ_REPO_URL="${FAIZ_REPO_URL:-https://github.com/vabruce/faiz-control-center.git}"
+FAIZ_TARBALL_URL="${FAIZ_TARBALL_URL:-https://github.com/vabruce/faiz-control-center/archive/refs/heads}"
 FAIZ_BRANCH="${FAIZ_BRANCH:-main}"
 FAIZ_INSTALL_DIR="${FAIZ_INSTALL_DIR:-$HOME/.local/share/faiz-control-center}"
 FAIZ_INSTALL_MODE="${FAIZ_INSTALL_MODE:-link}"

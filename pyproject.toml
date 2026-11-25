@@ -19,9 +19,9 @@ dependencies = [
 faiz-dash = "faiz_dash.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/Jamie-z-Jianmin/faiz-control-center"
-Repository = "https://github.com/Jamie-z-Jianmin/faiz-control-center"
-Issues = "https://github.com/Jamie-z-Jianmin/faiz-control-center/issues"
+Homepage = "https://github.com/vabruce/faiz-control-center"
+Repository = "https://github.com/vabruce/faiz-control-center"
+Issues = "https://github.com/vabruce/faiz-control-center/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
