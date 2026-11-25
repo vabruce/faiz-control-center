@@ -797,7 +797,8 @@ esac
             res = subprocess.run([str(STATUSLINE_SH)], input=b"{}", env=env, capture_output=True, check=True)
             plain = re.sub(r"\x1b\[[0-9;]*m", "", res.stdout.decode("utf-8", errors="replace"))
             self.assertIn("Gemini 5h:80.25% · Wk:91.50%", plain)
-            self.assertIn("Argon 64.00% · Claude 88.25%", plain)
+            self.assertIn("Argon 64.00%", plain)
+            self.assertNotIn("Claude", plain)
             self.assertNotIn("Colab", plain)
             self.assertNotIn("Queue", plain)
 
@@ -806,7 +807,8 @@ esac
             )
             res_exp = subprocess.run([str(STATUSLINE_SH)], input=b"{}", env=env, capture_output=True, check=True)
             plain_exp = re.sub(r"\x1b\[[0-9;]*m", "", res_exp.stdout.decode("utf-8", errors="replace"))
-            self.assertIn("Claude 88.25%", plain_exp)
+            self.assertIn("Argon 64.00%", plain_exp)
+            self.assertNotIn("Claude", plain_exp)
 
     def test_statusline_merges_claude_5h_wk_and_tracks_session_burn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -870,11 +872,12 @@ esac
             self.assertIn("╌", plain_90[2])
             self.assertEqual(len({len(ln) for ln in plain_90}), 1)
             self.assertLessEqual(len(plain_90[1]), 88)
-            self.assertIn("Gemini 0.0%·17.1%", plain_90[1])
-            self.assertIn("Arg 9.4!·Cla 70·85%", plain_90[3])
+            self.assertIn("Gemini 0.00%·17.11%", plain_90[1])
+            self.assertIn("Argon 9.43%!", plain_90[3])
+            self.assertNotIn("Claude", plain_90[3])
             self.assertIn("Burn 4.4K", plain_90[3])
 
-            # At >=96 columns (A2 adaptive expansion), Cla displays full 2 decimals and stays aligned 2x4 matrix
+            # At >=96 columns (A2 adaptive expansion), Argon displays full 2 decimals and stays aligned 2x4 matrix
             env_104 = {**env, "FAIZ_TERM_WIDTH": "104"}
             res_104 = subprocess.run([str(STATUSLINE_SH)], input=payload, env=env_104, capture_output=True, check=True)
             lines_104 = res_104.stdout.decode("utf-8", errors="replace").splitlines()
@@ -883,9 +886,10 @@ esac
             self.assertIn("─", plain_104_lines[0])
             self.assertIn("╌", plain_104_lines[2])
             self.assertEqual(len({len(ln) for ln in plain_104_lines}), 1)
-            self.assertIn("Arg 9.43%!·Cla 70.35%·85.17%", plain_104_lines[3])
+            self.assertIn("Argon 9.43%!", plain_104_lines[3])
+            self.assertNotIn("Claude", plain_104_lines[3])
 
-            # At >=155 columns (W1-A wide 2x4 bento matrix), full labels + merged Argon·Claude spread evenly to eff_cols
+            # At >=155 columns (W1-A wide 2x4 bento matrix), full labels spread evenly to eff_cols
             env_180 = {**env, "FAIZ_TERM_WIDTH": "180"}
             res_180 = subprocess.run([str(STATUSLINE_SH)], input=payload, env=env_180, capture_output=True, check=True)
             lines_180 = res_180.stdout.decode("utf-8", errors="replace").splitlines()
@@ -896,10 +900,11 @@ esac
             self.assertEqual(len({len(ln) for ln in plain_180_lines}), 1)
             self.assertEqual(len(plain_180_lines[1]), 178)
             self.assertIn("Gemini 5h:0.00% · Wk:17.11%", plain_180_lines[1])
-            self.assertIn("Argon 9.43%! · Claude 70.35%·85.17%", plain_180_lines[3])
+            self.assertIn("Argon 9.43% Pro!", plain_180_lines[3])
+            self.assertNotIn("Claude", plain_180_lines[3])
             self.assertIn("Queue 2 Fail", plain_180_lines[3])
 
-            # At 60 columns (5-line 4x2 narrow outline matrix), merges Arg·Cla with % and renders concise Gemini without rainbow fills
+            # At 60 columns (5-line 4x2 narrow outline matrix), renders concise Gemini + Argon without Claude or rainbow fills
             env_60 = {**env, "FAIZ_TERM_WIDTH": "60"}
             res_60 = subprocess.run([str(STATUSLINE_SH)], input=payload, env=env_60, capture_output=True, check=True)
             out_60 = res_60.stdout.decode("utf-8", errors="replace")
@@ -912,7 +917,8 @@ esac
             self.assertEqual(len({len(ln) for ln in plain_60_lines}), 1)
             self.assertEqual(len(plain_60_lines[0]), 58)
             self.assertIn("[ ○ Gemini 0%·17%", plain_60_lines[1])
-            self.assertIn("[ ▲ Arg 9.4%!·Cla 70·85%", plain_60_lines[3])
+            self.assertIn("[ ▲ Argon 9.43%!", plain_60_lines[3])
+            self.assertNotIn("Cla", plain_60_lines[3])
 
             # Appending turns incrementally updates single-session Burn to 2-decimal M
             with t_file.open("a", encoding="utf-8") as fh:
@@ -998,8 +1004,8 @@ esac
                     {
                         "pro_5h_pct": 15.25,
                         "pro_wk_pct": 42.5,
-                        "claude_5h_pct": 100.0,
-                        "claude_wk_pct": 100.0,
+                        "pro_5h_reset_at_epoch": int(now + 2 * 3600 + 30 * 60),
+                        "pro_wk_reset_at_epoch": int(now + 5 * 86400 + 12 * 3600),
                         "argon_wk_pct": None,
                         "quota_gate": "WARN_PRO",
                         "pro_count": 2,
@@ -1038,62 +1044,65 @@ esac
             }
             payload = b'{"context_window":{"used_percentage":42}}'
 
-            # 1. Auto wide (180 cols): Claude pill replaces Argon, WARN_PRO preserved, no duplicate 3rd Claude capsule
+            # 1. Auto wide (180 cols): Reset pill replaces Argon/Claude, WARN_PRO preserved
             cfg_file.write_text(json.dumps({"density": "auto"}), encoding="utf-8")
             res_wide = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "180"}, capture_output=True, check=True)
             plain_wide = re.sub(r"\x1b\[[0-9;]*m", "", res_wide.stdout.decode("utf-8", errors="replace"))
             lines_wide = plain_wide.splitlines()
             self.assertEqual(len(lines_wide), 4)
-            self.assertIn("Claude 5h:100.00% · Wk:100.00% Pro!", lines_wide[3])
+            self.assertIn("Reset 5h:2h", lines_wide[3])
+            self.assertIn("Wk:5d", lines_wide[3])
+            self.assertIn("Pro!", lines_wide[3])
             self.assertNotIn("Argon", plain_wide)
-            self.assertEqual(plain_wide.count("Claude"), 1)
+            self.assertNotIn("Claude", plain_wide)
 
-            # 2. Auto narrow 90 cols (2x4): stays 4-line aligned full-width matrix (88c), keeps exact 2dp, stacks Claude in Col 4
+            # 2. Auto narrow 90 cols (2x4): stays 4-line aligned full-width matrix (88c), stacks Reset in Col 4
             res_90 = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "90"}, capture_output=True, check=True)
             plain_90 = re.sub(r"\x1b\[[0-9;]*m", "", res_90.stdout.decode("utf-8", errors="replace"))
             lines_90 = plain_90.splitlines()
             self.assertEqual(len(lines_90), 4)
             self.assertEqual({len(ln) for ln in lines_90}, {88})
             self.assertIn("Gemini 15.25%·42.50%", lines_90[1])
-            self.assertIn("Claude 100.00%·100.00%!", lines_90[3])
-            self.assertTrue(lines_90[3].rstrip().endswith("Claude 100.00%·100.00%! "))
+            self.assertIn("Reset 2h", lines_90[3])
             self.assertNotIn("Arg", plain_90)
+            self.assertNotIn("Claude", plain_90)
 
-            # 3. Auto narrow 46 cols (4x2): stays 5-line aligned matrix, shows Cla, no Argon
+            # 3. Auto narrow 46 cols (4x2): stays 5-line aligned matrix, shows compact reset, no Argon/Claude
             res_46 = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "46"}, capture_output=True, check=True)
             plain_46 = re.sub(r"\x1b\[[0-9;]*m", "", res_46.stdout.decode("utf-8", errors="replace"))
             lines_46 = plain_46.splitlines()
             self.assertEqual(len(lines_46), 5)
             self.assertEqual(len({len(ln) for ln in lines_46}), 1)
-            self.assertIn("Cla ", lines_46[3])
+            self.assertIn("2h", lines_46[3])
             self.assertNotIn("Arg", plain_46)
+            self.assertNotIn("Cla", plain_46)
 
-            # 4. Expanded mode (180 cols): single Claude capsule + WARN_PRO, plus capsule_colors.argon fallback
+            # 4. Expanded mode (180 cols): single Reset capsule + WARN_PRO, plus capsule_colors.argon fallback
             cfg_file.write_text(json.dumps({"density": "expanded", "capsule_colors": {"argon": "green"}}), encoding="utf-8")
             res_exp = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "180"}, capture_output=True, check=True)
             out_exp = res_exp.stdout.decode("utf-8", errors="replace")
             plain_exp = re.sub(r"\x1b\[[0-9;]*m", "", out_exp)
-            self.assertIn("Claude 5h:100.00% · Wk:100.00% (Pro!)", plain_exp)
-            self.assertEqual(plain_exp.count("Claude"), 1)
+            self.assertIn("Reset 5h:2h", plain_exp)
+            self.assertIn("(Pro!)", plain_exp)
             self.assertNotIn("Argon", plain_exp)
+            self.assertNotIn("Claude", plain_exp)
             self.assertIn("27;52;38", out_exp)  # green capsule glass bg from capsule_colors.argon fallback
 
-            # 5. Compact mode: WARN_PRO ! badge on Gem pill, plus Cla when Claude < 99.9% and alert/warn escalation
+            # 5. Compact mode: WARN_PRO ! badge + inline reset timer on Gem pill, and pace alert escalation
             cfg_file.write_text(json.dumps({"density": "compact", "color_mode": "semantic"}), encoding="utf-8")
             res_cmp_full = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "120"}, capture_output=True, check=True)
             plain_cmp_full = re.sub(r"\x1b\[[0-9;]*m", "", res_cmp_full.stdout.decode("utf-8", errors="replace"))
-            self.assertIn("Gem 15.25/42.50%!", plain_cmp_full)
+            self.assertIn("Gem 15.25/42.50%!·↻2h", plain_cmp_full)
             self.assertNotIn("Arg", plain_cmp_full)
             self.assertNotIn("Cla", plain_cmp_full)
 
-            # Lower Claude below 20% while Pro is healthy -> compact escalates to alert ("64;30;31" + ▲)
+            # Over-pace 5h burn (runs out <=30m) while Pro >20% -> compact escalates to alert ("64;30;31")
             (cache_dir / "usage_snapshot.json").write_text(
                 json.dumps(
                     {
-                        "pro_5h_pct": 85.0,
+                        "pro_5h_pct": 25.0,
                         "pro_wk_pct": 90.0,
-                        "claude_5h_pct": 18.5,
-                        "claude_wk_pct": 65.0,
+                        "pro_5h_reset_at_epoch": int(now + 4 * 3600),
                         "argon_wk_pct": None,
                         "quota_gate": "GREEN",
                         "pty_fetched_epoch": int(now - 5),
@@ -1104,8 +1113,9 @@ esac
             res_cmp_low = subprocess.run([str(STATUSLINE_SH)], input=payload, env={**base_env, "FAIZ_TERM_WIDTH": "120"}, capture_output=True, check=True)
             out_cmp_low = res_cmp_low.stdout.decode("utf-8", errors="replace")
             plain_cmp_low = re.sub(r"\x1b\[[0-9;]*m", "", out_cmp_low)
-            self.assertIn("Gem 85.00/90.00%·▲18.50%·65.00%", plain_cmp_low)
-            self.assertIn("64;30;31", out_cmp_low)  # alert glass bg
+            self.assertIn("Gem 25.00/90.00%·↻", plain_cmp_low)
+            self.assertNotIn("Cla", plain_cmp_low)
+            self.assertIn("64;30;31", out_cmp_low)  # alert glass bg from <=30m run-out pace
 
             # 6. Missing Claude & Argon -> no dead Argon -- capsule emitted
             (cache_dir / "usage_snapshot.json").write_text(
@@ -1174,7 +1184,8 @@ esac
             self.assertIn("Cache --", plain_a)
             self.assertIn("Speed --", plain_a)
             self.assertIn("Gemini 35.92%·82.37%", lines_a[3])
-            self.assertIn("Claude 100.00%·10.27%", lines_a[3])
+            self.assertIn("Reset --", lines_a[3])
+            self.assertNotIn("Claude", plain_a)
             self.assertIn("Burn 0", plain_a)
             self.assertNotIn("10.98M", plain_a)
             self.assertNotIn("2.6M", plain_a)
@@ -1417,8 +1428,8 @@ esac
                     {
                         "pro_5h_pct": 97.84,
                         "pro_wk_pct": 80.74,
-                        "claude_5h_pct": 95.25,
-                        "claude_wk_pct": 88.5,
+                        "pro_5h_reset_at_epoch": int(now + 4 * 3600 + 20 * 60),
+                        "pro_wk_reset_at_epoch": int(now + 6 * 86400 + 12 * 3600),
                         "quota_gate": "GREEN",
                         "tokens_1h": 1800000,
                         "pty_fetched_epoch": int(now),
@@ -1441,16 +1452,17 @@ esac
             }
             payload = json.dumps({"context_window": {"used_percentage": 21}}).encode("utf-8")
 
-            # 1. 91-col Active with Claude <99.9% keeps full 2dp precision, Speed label, and 89/89 full fill
+            # 1. 91-col Active keeps full 2dp Gemini precision, Reset countdown, Speed label, and 89/89 full fill
             res_91 = subprocess.run([str(STATUSLINE_SH)], input=payload, env=env, capture_output=True, check=True)
             lines_91 = re.sub(r"\x1b\[[0-9;]*m", "", res_91.stdout.decode("utf-8", errors="replace")).splitlines()
             self.assertEqual(len(lines_91), 4)
             self.assertEqual({len(ln) for ln in lines_91}, {89})
             self.assertIn("Speed 163t/s", lines_91[1])
             self.assertIn("Gemini 97.84%·80.74%", lines_91[1])
-            self.assertIn("Claude 95.25%·88.50%", lines_91[3])
+            self.assertIn("Reset 4h", lines_91[3])
+            self.assertIn("·6d1", lines_91[3])
+            self.assertNotIn("Claude", "\n".join(lines_91))
             self.assertTrue(lines_91[1].rstrip().endswith("Gemini 97.84%·80.74% "))
-            self.assertTrue(lines_91[3].rstrip().endswith("Claude 95.25%·88.50% "))
 
             # 2. 91-col Worst-Case Stress (cold + online + WARN_PRO + 2R · 1F) keeps full labels & 2dp at 89/89
             (cache_dir / "usage_snapshot.json").write_text(
@@ -1458,8 +1470,6 @@ esac
                     {
                         "pro_5h_pct": 100.0,
                         "pro_wk_pct": 100.0,
-                        "claude_5h_pct": 100.0,
-                        "claude_wk_pct": 100.0,
                         "quota_gate": "WARN_PRO",
                         "tokens_1h": 2400000,
                         "pty_fetched_epoch": int(now),
@@ -1484,7 +1494,8 @@ esac
             self.assertIn("Cache 97% cold", lines_stress[1])
             self.assertIn("Speed 217t/s", lines_stress[1])
             self.assertIn("Gemini 100.00%·100.00%", lines_stress[1])
-            self.assertIn("Claude 100.00%·100.00%!", lines_stress[3])
+            self.assertIn("Reset Full!", lines_stress[3])
+            self.assertNotIn("Claude", "\n".join(lines_stress))
 
             # 3. 240-col Ultrawide fills edge-to-edge (238/238, no 210c cap) with unified Col 4 quota alignment
             res_240 = subprocess.run(
@@ -1498,7 +1509,8 @@ esac
             self.assertEqual(len(lines_240), 4)
             self.assertEqual({len(ln) for ln in lines_240}, {238})
             self.assertIn("Gemini 5h:100.00%", lines_240[1])
-            self.assertIn("Claude 5h:100.00%", lines_240[3])
+            self.assertIn("Reset Full Pro!", lines_240[3])
+            self.assertNotIn("Claude", "\n".join(lines_240))
 
     def test_statusline_stdin_quota_width_priority_cache_fallback_and_expiry_guards(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1573,7 +1585,8 @@ esac
             self.assertIn("Cache 90.0%", lines_live[1])
             self.assertIn("Gemini 5h:15.25%", lines_live[1])
             self.assertIn("Wk:80.74%", lines_live[1])
-            self.assertIn("Claude 5h:95.25% · Wk:88.50% Pro!", lines_live[3])
+            self.assertIn("Reset 5h:2h00m · Wk:5d18h · ~32m Pro!", lines_live[3])
+            self.assertNotIn("Claude", plain_live)
 
             # 4: Cached reset-expiry 60s grace window
             env_nb = {**env, "FAIZ_STATUSLINE_NO_BG": "1", "FAIZ_TERM_WIDTH": "180"}
@@ -1634,7 +1647,8 @@ esac
             lines_wk0 = plain_wk0.splitlines()
             self.assertEqual(len(lines_wk0), 4)
             self.assertIn("Gemini 0.00%·0.00%", lines_wk0[1])
-            self.assertIn("Claude 0.00%·0.00%!", lines_wk0[3])
+            self.assertIn("Reset 5h00m·3d11h!", lines_wk0[3])
+            self.assertNotIn("Claude", plain_wk0)
 
     def test_install_sh_wire_settings_safe_merge_idempotent_and_invalid_json_guard(self) -> None:
         install_sh = REPO_ROOT / "install.sh"
