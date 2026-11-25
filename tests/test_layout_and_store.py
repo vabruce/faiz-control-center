@@ -169,6 +169,7 @@ class TestLayoutAndStore(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["fetched_at"], "2026-11-18T10:00:00Z")
 
     async def test_parse_refresh_seconds_and_reset_epoch_export(self) -> None:
+        self.assertEqual(parse_refresh_seconds("Refreshes in 6d 23h 31m"), 6 * 86400 + 23 * 3600 + 31 * 60)
         self.assertEqual(parse_refresh_seconds("Refreshes in 3h 32m"), 3 * 3600 + 32 * 60)
         self.assertEqual(parse_refresh_seconds("Refreshes in 45m"), 45 * 60)
         self.assertIsNone(parse_refresh_seconds("Quota available"))

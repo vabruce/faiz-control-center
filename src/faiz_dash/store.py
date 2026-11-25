@@ -125,21 +125,22 @@ def atomic_write_json(path: Path, payload: dict[str, Any], max_bytes: int = MAX_
         raise
 
 
-_REFRESH_DUR_RE = re.compile(r"(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", re.IGNORECASE)
+_REFRESH_DUR_RE = re.compile(r"(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", re.IGNORECASE)
 
 
 def parse_refresh_seconds(refresh_text: str) -> Optional[int]:
-    """Parse `/usage` strings like 'Refreshes in 3h 32m' or '45m' to remaining seconds."""
+    """Parse `/usage` strings like 'Refreshes in 6d 23h 31m', '3h 32m', or '45m' to remaining seconds."""
     text = (refresh_text or "").strip()
     if not text or "available" in text.lower():
         return None
     tail = text.rsplit("in", 1)[-1] if " in " in text.lower() else text
     for m in _REFRESH_DUR_RE.finditer(tail):
-        h_s, m_s = m.group(1), m.group(2)
-        if h_s is not None or m_s is not None:
+        d_s, h_s, m_s = m.group(1), m.group(2), m.group(3)
+        if d_s is not None or h_s is not None or m_s is not None:
+            days = int(d_s or 0)
             hours = int(h_s or 0)
             mins = int(m_s or 0)
-            return hours * 3600 + mins * 60
+            return days * 86400 + hours * 3600 + mins * 60
     return None
 
 
