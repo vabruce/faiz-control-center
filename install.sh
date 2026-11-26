@@ -113,6 +113,7 @@ _install_file() {
 }
 
 _install_file "$REPO_DIR/scripts/statusline.sh" "$HOME/.agents/scripts/statusline.sh" 1
+_install_file "$REPO_DIR/scripts/grok-statusline.sh" "$HOME/.agents/scripts/grok-statusline.sh" 1
 _install_file "$REPO_DIR/bin/faiz-dash" "$HOME/.local/bin/faiz-dash" 1
 _install_file "$REPO_DIR/bin/_faiz_dash_hook.sh" "$HOME/.local/bin/_faiz_dash_hook.sh" 1
 _install_file "$REPO_DIR/skills/faiz-dash/SKILL.md" "$HOME/.agents/skills/faiz-dash/SKILL.md" 0

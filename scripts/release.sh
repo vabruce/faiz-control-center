@@ -96,7 +96,7 @@ if [ -f .release-privacy-patterns ]; then
 fi
 
 echo "[release] 2/4 Shell syntax checks..."
-bash -n install.sh docs/site/install.sh scripts/statusline.sh scripts/release.sh bin/faiz-dash bin/_faiz_dash_hook.sh
+bash -n install.sh docs/site/install.sh scripts/statusline.sh scripts/grok-statusline.sh scripts/release.sh bin/faiz-dash bin/_faiz_dash_hook.sh
 
 echo "[release] 3/4 Running full unittest suite..."
 PYTHONPATH=src "$PY_BIN" -m unittest discover -s tests -v
