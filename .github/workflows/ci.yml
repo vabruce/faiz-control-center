@@ -35,6 +35,7 @@ jobs:
         run: |
           bash -n install.sh
           bash -n scripts/statusline.sh
+          bash -n scripts/grok-statusline.sh
           bash -n bin/faiz-dash
           bash -n bin/_faiz_dash_hook.sh
 

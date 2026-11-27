@@ -95,7 +95,15 @@ if [ -n "$t_path" ] && [ -s "$t_path" ]; then
     fi
     if [ ! -s "$TURN_CACHE" ] || { [ "$in_turn" -eq 0 ] && [ "${t_sz:-0}" != "$c_sz" ]; }; then
         mkdir -p "$CACHE_DIR" 2>/dev/null || true
-        trn_json=$(tail -c 65536 "$t_path" 2>/dev/null | "$JQ_BIN" -Rsc --argjson tsz "${t_sz:-0}" --argjson tmt "${t_mt:-0}" '
+        prev_arg=(--argjson prev '[]')
+        [ -s "$TURN_CACHE" ] && prev_arg=(--slurpfile prev "$TURN_CACHE")
+        trn_raw=$(tail -c 65536 "$t_path" 2>/dev/null || true)
+        if [[ "$trn_raw" != *'"turn_completed"'* ]]; then
+            trn_fb=$(grep '"turn_completed"' "$t_path" 2>/dev/null | tail -n 1 || true)
+            [ -n "$trn_fb" ] && trn_raw="$trn_fb"
+        fi
+        trn_json=$(printf '%s\n' "$trn_raw" | "$JQ_BIN" -Rsc "${prev_arg[@]}" --argjson tsz "${t_sz:-0}" --argjson tmt "${t_mt:-0}" '
+          ($prev[0] // {}) as $p |
           [
             split("\n")[] | select(length > 0) | try fromjson catch empty |
             select(.params.update.sessionUpdate == "turn_completed") |
@@ -110,7 +118,7 @@ if [ -n "$t_path" ] && [ -s "$t_path" ]; then
               tps: (if ($u.outputTokens // 0) > 0 and ($u.apiDurationMs // 0) >= 200 then ((($u.outputTokens * 1000.0) / $u.apiDurationMs) | round) else null end),
               cache_hit: (if ($u.inputTokens // 0) > 0 then ((($u.cachedReadTokens // 0) * 100.0) / $u.inputTokens) else null end)
             }
-          ] | last // {sz: $tsz, ts: $tmt}
+          ] | last // (($p + {sz: $tsz}) | if (.ts // 0) > 0 then . else (. + {ts: $tmt}) end)
         ' 2>/dev/null || true)
         if [ -n "$trn_json" ]; then
             printf '%s\n' "$trn_json" > "$TURN_CACHE.tmp.$$" 2>/dev/null && mv -f "$TURN_CACHE.tmp.$$" "$TURN_CACHE" 2>/dev/null || true
@@ -182,23 +190,39 @@ exec "$JQ_BIN" "${jq_args[@]}" '
     (("■■■■■■"[0:$f]) + ("□□□□□□"[0:(6 - $f)]));
   def ring($pct):
     if $pct >= 88 then "●" elif $pct >= 63 then "◕" elif $pct >= 38 then "◑" elif $pct >= 13 then "◔" else "○" end;
-  def palette($t):
+  def ansi16($name):
+    ({
+      "cyan":"\u001b[36m","green":"\u001b[32m","yellow":"\u001b[33m","red":"\u001b[31m",
+      "blue":"\u001b[34m","magenta":"\u001b[35m","white":"\u001b[37m","gray":"\u001b[90m",
+      "bright_cyan":"\u001b[96m","bright_green":"\u001b[92m","bright_yellow":"\u001b[93m",
+      "bright_red":"\u001b[91m","bright_blue":"\u001b[94m","bright_magenta":"\u001b[95m"
+    }[$name] // "");
+  def slot_rgb($name):
+    ({
+      "cyan":"136;192;208","green":"163;190;140","yellow":"235;203;139","red":"191;97;106",
+      "blue":"129;161;193","magenta":"180;142;173","white":"229;233;240","gray":"140;149;166",
+      "bright_cyan":"143;188;187","bright_green":"166;227;161","bright_yellow":"249;226;175",
+      "bright_red":"243;139;168","bright_blue":"137;180;250","bright_magenta":"203;166;247"
+    }[$name] // "216;222;233");
+  def palette($t; $custom_cols):
     if $t == "nord" then
       {glass_bg:"46;52;64",glass_lbl:"152;163;184",glass_val:"236;239;244",ghost_brd:"97;110;136",base_bg:"59;66;82",base_fg:"229;233;240",base_acc:"136;192;208",ctx_bg:"46;64;87",ctx_fg:"236;239;244",ctx_acc:"136;192;208",ok_bg:"46;74;60",ok_fg:"236;239;244",ok_acc:"163;190;140",warn_bg:"78;62;38",warn_fg:"242;212;152",warn_acc:"235;203;139",alert_bg:"84;42;52",alert_fg:"248;220;224",alert_acc:"191;97;106",muted_bg:"49;55;68",muted_fg:"165;175;194",muted_acc:"140;152;174"}
     elif $t == "tokyo_night" then
       {glass_bg:"36;40;59",glass_lbl:"136;148;186",glass_val:"205;214;248",ghost_brd:"86;95;137",base_bg:"41;46;66",base_fg:"205;214;248",base_acc:"122;162;247",ctx_bg:"38;61;92",ctx_fg:"205;214;248",ctx_acc:"125;207;255",ok_bg:"36;66;55",ok_fg:"205;214;248",ok_acc:"158;206;106",warn_bg:"74;58;32",warn_fg:"236;188;118",warn_acc:"224;175;104",alert_bg:"82;38;52",alert_fg:"255;212;222",alert_acc:"247;118;142",muted_bg:"38;43;61",muted_fg:"146;158;194",muted_acc:"110;122;158"}
     elif $t == "catppuccin" then
       {glass_bg:"49;50;68",glass_lbl:"166;173;200",glass_val:"205;214;244",ghost_brd:"108;112;134",base_bg:"62;64;86",base_fg:"217;226;252",base_acc:"137;180;250",ctx_bg:"42;68;86",ctx_fg:"217;226;252",ctx_acc:"137;220;235",ok_bg:"42;74;56",ok_fg:"217;226;252",ok_acc:"166;227;161",warn_bg:"80;66;38",warn_fg:"252;232;186",warn_acc:"249;226;175",alert_bg:"86;40;56",alert_fg:"252;220;230",alert_acc:"243;139;168",muted_bg:"50;52;70",muted_fg:"166;173;200",muted_acc:"147;153;178"}
+    elif $t == "custom" then
+      {glass_bg:"42;45;51",glass_lbl:"154;160;166",glass_val:"232;234;237",ghost_brd:"107;114;128",base_bg:"59;66;82",base_fg:"229;233;240",base_acc:"136;192;208",ctx_bg:"46;64;87",ctx_fg:slot_rgb($custom_cols.context // "cyan"),ctx_acc:slot_rgb($custom_cols.context // "cyan"),ok_bg:"46;74;60",ok_fg:slot_rgb($custom_cols.ok // "green"),ok_acc:slot_rgb($custom_cols.ok // "green"),warn_bg:"78;62;38",warn_fg:slot_rgb($custom_cols.warn // "yellow"),warn_acc:slot_rgb($custom_cols.warn // "yellow"),alert_bg:"84;42;52",alert_fg:slot_rgb($custom_cols.alert // "red"),alert_acc:slot_rgb($custom_cols.alert // "red"),muted_bg:"49;55;68",muted_fg:slot_rgb($custom_cols.muted // "gray"),muted_acc:slot_rgb($custom_cols.muted // "gray")}
     else
       {glass_bg:"48;51;58",glass_lbl:"172;180;194",glass_val:"238;240;244",ghost_brd:"107;114;128",base_bg:"60;64;67",base_fg:"232;234;237",base_acc:"138;180;248",base_gbg:"48;51;58",base_glbl:"172;180;194",base_gval:"238;240;244",ctx_bg:"23;78;166",ctx_fg:"248;249;250",ctx_acc:"138;180;248",ctx_gbg:"35;45;64",ctx_glbl:"156;172;198",ctx_gval:"238;243;252",ok_bg:"13;101;45",ok_fg:"248;249;250",ok_acc:"129;201;149",ok_gbg:"27;52;38",ok_glbl:"162;204;178",ok_gval:"234;248;239",warn_bg:"251;188;4",warn_fg:"32;33;36",warn_acc:"250;204;107",warn_gbg:"60;50;26",warn_glbl:"214;196;150",warn_gval:"252;218;140",alert_bg:"165;14;14",alert_fg:"248;249;250",alert_acc:"242;139;130",alert_gbg:"64;30;31",alert_glbl:"218;174;174",alert_gval:"250;228;226",muted_bg:"52;56;62",muted_fg:"189;193;198",muted_acc:"154;160;166",muted_gbg:"42;45;52",muted_glbl:"158;164;174",muted_gval:"218;222;228"}
     end;
   def row_token_to_slot($tok): ({"blue":"ctx","green":"ok","yellow":"warn","red":"alert","slate":"base","muted":"muted"}[$tok] // "ctx");
-  def slot_style($pal; $slot):
-    if $slot == "ctx" then [$pal.ctx_bg, $pal.ctx_fg, $pal.ctx_acc, "\u001b[36m", ($pal.ctx_gbg // $pal.ctx_bg), ($pal.ctx_glbl // $pal.glass_lbl), ($pal.ctx_gval // $pal.glass_val), "84;108;150"]
-    elif $slot == "ok" then [$pal.ok_bg, $pal.ok_fg, $pal.ok_acc, "\u001b[32m", ($pal.ok_gbg // $pal.ok_bg), ($pal.ok_glbl // $pal.glass_lbl), ($pal.ok_gval // $pal.glass_val), "78;132;98"]
-    elif $slot == "warn" then [$pal.warn_bg, $pal.warn_fg, $pal.warn_acc, "\u001b[33m", ($pal.warn_gbg // $pal.warn_bg), ($pal.warn_glbl // $pal.glass_lbl), ($pal.warn_gval // $pal.glass_val), "158;134;72"]
-    elif $slot == "alert" then [$pal.alert_bg, $pal.alert_fg, $pal.alert_acc, "\u001b[31m", ($pal.alert_gbg // $pal.alert_bg), ($pal.alert_glbl // $pal.glass_lbl), ($pal.alert_gval // $pal.glass_val), "162;82;84"]
-    elif $slot == "muted" then [$pal.muted_bg, $pal.muted_fg, $pal.muted_acc, "\u001b[90m", ($pal.muted_gbg // $pal.muted_bg), ($pal.muted_glbl // $pal.glass_lbl), ($pal.muted_gval // $pal.glass_val), "92;99;112"]
+  def slot_style($pal; $slot; $c16):
+    if $slot == "ctx" then [$pal.ctx_bg, $pal.ctx_fg, $pal.ctx_acc, $c16.context, ($pal.ctx_gbg // $pal.ctx_bg), ($pal.ctx_glbl // $pal.glass_lbl), ($pal.ctx_gval // $pal.glass_val), "84;108;150"]
+    elif $slot == "ok" then [$pal.ok_bg, $pal.ok_fg, $pal.ok_acc, $c16.ok, ($pal.ok_gbg // $pal.ok_bg), ($pal.ok_glbl // $pal.glass_lbl), ($pal.ok_gval // $pal.glass_val), "78;132;98"]
+    elif $slot == "warn" then [$pal.warn_bg, $pal.warn_fg, $pal.warn_acc, $c16.warn, ($pal.warn_gbg // $pal.warn_bg), ($pal.warn_glbl // $pal.glass_lbl), ($pal.warn_gval // $pal.glass_val), "158;134;72"]
+    elif $slot == "alert" then [$pal.alert_bg, $pal.alert_fg, $pal.alert_acc, $c16.alert, ($pal.alert_gbg // $pal.alert_bg), ($pal.alert_glbl // $pal.glass_lbl), ($pal.alert_gval // $pal.glass_val), "162;82;84"]
+    elif $slot == "muted" then [$pal.muted_bg, $pal.muted_fg, $pal.muted_acc, $c16.muted, ($pal.muted_gbg // $pal.muted_bg), ($pal.muted_glbl // $pal.glass_lbl), ($pal.muted_gval // $pal.glass_val), "92;99;112"]
     else [$pal.base_bg, $pal.base_fg, $pal.base_acc, "", ($pal.base_gbg // $pal.base_bg), ($pal.base_glbl // $pal.glass_lbl), ($pal.base_gval // $pal.glass_val), "84;108;150"] end;
   def item_plain($it): (if $it.icon != "" then "\($it.icon) " else "" end) + ($it.parts | map(.t) | join(""));
   def cap_width($it; $style): (item_plain($it) | length) + ($it.pad // 0) + (if $style == "minimal" then 0 elif $style == "ghost" then 2 else 4 end);
@@ -281,7 +305,20 @@ exec "$JQ_BIN" "${jq_args[@]}" '
   ([$layout_cols, 190] | min) as $eff_cols |
   (($density == "auto") and ($layout_cols >= 150)) as $wide_rich |
   (($density == "auto") and ($layout_cols < 86)) as $narrow_grid |
-  palette($theme) as $pal |
+  ($raw_cfg.colors // {}) as $col |
+  ($raw_cfg.modules // {}) as $mods |
+  (if $mods.context == false then false else true end) as $m_ctx |
+  (if $mods.cache == false then false else true end) as $m_cache |
+  (if $mods.speed == false then false else true end) as $m_speed |
+  (if $mods.sessions == false then false else true end) as $m_sess |
+  palette($theme; $col) as $pal |
+  {
+    context: ansi16($col.context // "cyan"),
+    ok: ansi16($col.ok // "green"),
+    warn: ansi16($col.warn // "yellow"),
+    alert: ansi16($col.alert // "red"),
+    muted: ansi16($col.muted // "gray")
+  } as $c16 |
   (now) as $now_f |
   ($now_f | floor) as $now_s |
   (($now_f * 1000) | floor) as $now_ms |
@@ -484,11 +521,11 @@ exec "$JQ_BIN" "${jq_args[@]}" '
           icon: "\ue0a0",
           parts: (
             if $wide_rich then
-              [{t: "\($host) · ", r: "lbl"}, {t: elide_path($dir_disp; 24), r: "val"}] + $vcs_wide
+              [{t: "\($host) · ", r: "lbl"}, {t: elide_path($dir_disp; 28), r: "val"}] + $vcs_wide
             elif $narrow_grid then
               [{t: elide_end($host; 6), r: "lbl"}] + $vcs_mid
             else
-              [{t: "\($host):", r: "lbl"}, {t: elide_path($dir_disp; 16), r: "val"}] + $vcs_mid
+              [{t: "\($host):", r: "lbl"}, {t: elide_path($dir_disp; (if $eff_cols >= 112 then 24 elif $eff_cols >= 98 then 19 else 15 end)), r: "val"}] + $vcs_mid
             end
           ),
           alt1: ([{t: "\($host):", r: "lbl"}, {t: elide_path($dir_disp; 10), r: "val"}] + $vcs_mid),
@@ -533,14 +570,24 @@ exec "$JQ_BIN" "${jq_args[@]}" '
           tint: ($bslot == "alert" or $bslot == "warn")
         }
       )
+    ] | [
+      .[] |
+      select(
+        ((.cap_id == "context") and ($m_ctx | not) | not) and
+        ((.cap_id == "cache") and ($m_cache | not) | not) and
+        ((.cap_id == "speed") and ($m_speed | not) | not) and
+        ((.cap_id == "burn") and ($m_sess | not) | not)
+      )
     ]
   end |
+  if length == 0 then "" else
 
-  # Matrix packing: 2x3 equalized glass capsules (>=86 cols), 3x2 outline capsules (46-85 cols), flow (<46 cols)
+  # Matrix packing: 2x3 equalized glass capsules (6 items, >=86 cols), 3x2 outline capsules (6 items, 46-85 cols), flow otherwise
+  (length == 6) as $full6 |
   (if $eff_style == "minimal" then " | " elif $wide_rich or ($narrow_grid and $eff_cols >= 50) then "  " else " " end) as $sep |
   ($sep | length) as $sep_w |
   (
-    if $density == "compact" or ($layout_cols < 46) then
+    if $density == "compact" or ($layout_cols < 46) or ($full6 | not) then
       {mode: "flow", rows: pack_rows(.; $eff_cols; $sep_w; $eff_style)}
     elif $layout_cols >= 86 then
       (
@@ -570,13 +617,14 @@ exec "$JQ_BIN" "${jq_args[@]}" '
      else "" end) as $row_slot |
     ([
       $row[] as $it |
-      ($cap_cols[$it.cap_id // ""] // "auto") as $cap_tok |
+      ($cap_cols[$it.cap_id // ""] // "auto") as $raw_cap_tok |
+      (if ($raw_cap_tok == "auto" or $raw_cap_tok == "") and (($it.cap_id // "") == "burn") then ($cap_cols.sessions // "auto") else $raw_cap_tok end) as $cap_tok |
       (if $cap_tok != "auto" and $cap_tok != "" then row_token_to_slot($cap_tok)
        elif $color_mode == "semantic" then $it.slot
        elif $row_slot != "" then $row_slot
        else $it.slot end) as $use_slot |
-      slot_style($pal; $use_slot) as $sp |
-      slot_style($pal; $it.slot) as $acc_sp |
+      slot_style($pal; $use_slot; $c16) as $sp |
+      slot_style($pal; $it.slot; $c16) as $acc_sp |
       render_capsule($it; $sp; $acc_sp; $pal; $r_style; $has_tc; ($it.tint and ($is_matrix or $color_mode == "semantic")))
     ] | join($sep))
   ] as $lines |
@@ -593,4 +641,5 @@ exec "$JQ_BIN" "${jq_args[@]}" '
       $lines[0:5]
     end
   ) | join("\n")
+  end
 '
