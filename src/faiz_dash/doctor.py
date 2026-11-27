@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import sys
 import time
+import tomllib
 from typing import Any, Callable, Mapping, Optional
 
 from .models import sanitize_for_json
@@ -176,7 +177,7 @@ def run_doctor_checks(
     })
 
     # 9. Optional CLIs
-    opt_names = ("agy", "rex", "colab", "gdrive", "rclone", "gcloud")
+    opt_names = ("agy", "grok", "rex", "colab", "gdrive", "rclone", "gcloud")
     found_opts = [name for name in opt_names if resolver(name)]
     missing_opts = [name for name in opt_names if name not in found_opts]
     opt_detail = f"found: {', '.join(found_opts) or 'none'}; optional missing: {', '.join(missing_opts) or 'none'}"
@@ -186,6 +187,56 @@ def run_doctor_checks(
         "title": "Optional CLIs",
         "detail": opt_detail,
     })
+
+    # 10. Grok CLI statusLine check (when grok CLI or ~/.grok/config.toml is present)
+    grok_cfg = active_home / ".grok" / "config.toml"
+    grok_sl = active_home / ".agents" / "scripts" / "grok-statusline.sh"
+    if resolver("grok") or grok_cfg.exists():
+        if not grok_sl.exists() or not os.access(grok_sl, os.X_OK):
+            checks.append({
+                "id": "grok_statusline",
+                "status": "warn",
+                "title": "Grok StatusLine",
+                "detail": f"Missing or non-executable {grok_sl}",
+                "fix": "./install.sh --link",
+            })
+        elif not grok_cfg.exists():
+            checks.append({
+                "id": "grok_statusline",
+                "status": "warn",
+                "title": "Grok StatusLine",
+                "detail": f"Missing {grok_cfg}",
+                "fix": 'Add [ui.status_line] type="command" command="~/.grok/statusline.sh" in ~/.grok/config.toml',
+            })
+        else:
+            try:
+                g_data = tomllib.loads(grok_cfg.read_text(encoding="utf-8"))
+                g_sl = ((g_data.get("ui") or {}).get("status_line") or {}) if isinstance(g_data, dict) else {}
+                g_type = str(g_sl.get("type", "")).strip()
+                g_cmd = str(g_sl.get("command", "")).strip()
+                if g_type == "command" and (g_cmd.endswith("statusline.sh") or g_cmd.endswith("grok-statusline.sh")):
+                    checks.append({
+                        "id": "grok_statusline",
+                        "status": "pass",
+                        "title": "Grok StatusLine",
+                        "detail": f"Wired to {g_cmd} (target: {grok_sl})",
+                    })
+                else:
+                    checks.append({
+                        "id": "grok_statusline",
+                        "status": "warn",
+                        "title": "Grok StatusLine",
+                        "detail": f"ui.status_line type={g_type!r} command={g_cmd!r}",
+                        "fix": 'Set [ui.status_line] type="command" command="~/.grok/statusline.sh" in ~/.grok/config.toml',
+                    })
+            except Exception as exc:
+                checks.append({
+                    "id": "grok_statusline",
+                    "status": "fail",
+                    "title": "Grok StatusLine",
+                    "detail": f"Invalid TOML in {grok_cfg}: {exc}",
+                    "fix": f"Fix TOML syntax in {grok_cfg}",
+                })
 
     summary = {
         "pass": sum(1 for c in checks if c["status"] == "pass"),

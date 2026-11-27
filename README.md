@@ -4,9 +4,9 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776ab.svg)](pyproject.toml)
 [![Textual TUI](https://img.shields.io/badge/Textual-8.0%2B-green.svg)](https://textual.textualize.io/)
 
-**Ultra-fast (`<80ms`) TrueColor `statusLine`, exact 2-decimal `/usage` quota sync, zero-clutter in-session diagnostic bubbles (`/faiz-dash`), and an on-demand Textual TUI Control Center built for [Antigravity CLI](https://antigravity.google) (`agy`).**
+**Ultra-fast (`<80ms`) TrueColor `statusLine` for [Antigravity CLI](https://antigravity.google) (`agy`) & Grok CLI (`grok`), exact 2-decimal `/usage` quota sync, zero-clutter in-session diagnostic bubbles (`/faiz-dash`), and an on-demand Textual TUI Control Center.**
 
-> Forked from [Jamie-z-Jianmin/faiz-control-center](https://github.com/Jamie-z-Jianmin/faiz-control-center) and tailored for pure Google Antigravity (`agy`) Gemini workflows — replaces the 3P Claude quota capsule with a live **Gemini Quota Reset & Burn-Pace Forecast** (`↻ Reset 5h·Wk` + `~Xm` run-out forecast) capsule and multi-day refresh countdown parsing.
+> Forked from [Jamie-z-Jianmin/faiz-control-center](https://github.com/Jamie-z-Jianmin/faiz-control-center) and tailored for Antigravity (`agy`) + Grok (`grok`) workflows — replaces the 3P Claude quota capsule in `agy` with a live **Gemini Quota Reset & Burn-Pace Forecast** (`↻ Reset 5h·Wk` + `~Xm` run-out forecast) capsule and ships a matching 2×3 glass capsule renderer (`scripts/grok-statusline.sh`) for Grok CLI sharing `~/.agents/statusline_config.json`.
 
 English | [简体中文](README.zh-CN.md)
 
@@ -96,6 +96,16 @@ Ensure `~/.local/bin` is in your `PATH`. `--wire-settings` safely backs up and m
     "command": "~/.agents/scripts/statusline.sh"
   }
 }
+```
+
+For **Grok CLI (`grok`)**, `install.sh` also links `~/.agents/scripts/grok-statusline.sh` (or invoke via `~/.grok/statusline.sh`):
+
+```toml
+[ui.status_line]
+type = "command"
+command = "~/.grok/statusline.sh"
+padding = 0
+refresh_interval = 60
 ```
 
 ### Verify

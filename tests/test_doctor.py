@@ -115,6 +115,40 @@ class TestDoctor(unittest.TestCase):
                 self.assertEqual(rc_bad, 1)
                 self.assertIn("FAILED", buf_bad.getvalue())
 
+    def test_grok_statusline_doctor_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+            for name in ("statusline.sh", "grok-statusline.sh"):
+                p = fake_home / ".agents" / "scripts" / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+                p.chmod(0o755)
+
+            grok_cfg = fake_home / ".grok" / "config.toml"
+            grok_cfg.parent.mkdir(parents=True)
+            grok_cfg.write_text(
+                '[ui.status_line]\ntype = "command"\ncommand = "~/.grok/statusline.sh"\npadding = 0\nrefresh_interval = 60\n',
+                encoding="utf-8",
+            )
+
+            report = run_doctor_checks(
+                home=fake_home,
+                env={"COLORTERM": "truecolor", "LANG": "en_US.UTF-8"},
+                which_fn=lambda name: f"/usr/bin/{name}" if name in {"bash", "jq", "grok"} else None,
+            )
+            grok_chk = next(c for c in report["checks"] if c["id"] == "grok_statusline")
+            self.assertEqual(grok_chk["status"], "pass")
+
+            grok_cfg.write_text("[broken toml", encoding="utf-8")
+            bad_report = run_doctor_checks(
+                home=fake_home,
+                env={"COLORTERM": "truecolor", "LANG": "en_US.UTF-8"},
+                which_fn=lambda name: f"/usr/bin/{name}" if name in {"bash", "jq", "grok"} else None,
+            )
+            self.assertFalse(bad_report["ok"])
+            bad_chk = next(c for c in bad_report["checks"] if c["id"] == "grok_statusline")
+            self.assertEqual(bad_chk["status"], "fail")
+
 
 if __name__ == "__main__":
     unittest.main()

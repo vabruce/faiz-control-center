@@ -186,6 +186,76 @@ class TestGrokStatusline(unittest.TestCase):
             self.assertIn("Ctx 45%", plain)
             self.assertIn("mozart:Grok 4.7(main)·$0.42", plain)
 
+    def test_large_updates_tail_fallback_and_config_parity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+            updates_path = fake_home / "updates.jsonl"
+            turn_line = json.dumps(
+                {
+                    "timestamp": int(time.time()) - 10,
+                    "method": "_x.ai/session/update",
+                    "params": {
+                        "sessionId": "sess-big",
+                        "update": {
+                            "sessionUpdate": "turn_completed",
+                            "usage": {
+                                "inputTokens": 100000,
+                                "cachedReadTokens": 95000,
+                                "outputTokens": 2400,
+                                "modelCalls": 3,
+                                "apiDurationMs": 40000,
+                            },
+                        },
+                    },
+                }
+            )
+            # Append >70KB of non-turn_completed noise so tail -c 65536 misses turn_line
+            trailing_noise = (json.dumps({"method": "_x.ai/session/update", "params": {"blob": "x" * 900}}) + "\n") * 80
+            updates_path.write_text(turn_line + "\n" + trailing_noise, encoding="utf-8")
+
+            cfg = fake_home / "sl_cfg.json"
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "theme": "custom",
+                        "colors": {"context": "magenta"},
+                        "capsule_colors": {"sessions": "green"},
+                        "modules": {"speed": False},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = self._base_env(fake_home, width=120)
+            env["FAIZ_STATUSLINE_CONFIG"] = str(cfg)
+            env["GROK_STATUSLINE_NO_GIT"] = "1"
+
+            payload = json.dumps(
+                {
+                    "session_id": "sess-big",
+                    "transcript_path": str(updates_path),
+                    "model": {"display_name": "Grok 4.7 Build"},
+                    "workspace": {"current_dir": str(fake_home / "src" / "faiz-control-center"), "branch": "main"},
+                    "context_window": {
+                        "used_percentage": 30,
+                        "session_input_tokens": 100000,
+                        "session_output_tokens": 2400,
+                    },
+                    "cost": {"total_cost_usd": 0.85},
+                }
+            ).encode("utf-8")
+
+            res = subprocess.run([str(GROK_SL_SH)], input=payload, env=env, capture_output=True, check=True)
+            out = res.stdout.decode("utf-8")
+            plain = _strip_ansi(out)
+            # Recovered turn_completed across >64KB tail noise
+            self.assertIn("Cache 95.0%", plain)
+            # speed module disabled -> omitted
+            self.assertNotIn("Speed ", plain)
+            # Full repo name preserved at width=120 without mid-word truncation
+            self.assertIn("mozart:~/…/faiz-control-center(main)", plain)
+            # capsule_colors.sessions fallback applied green slot ("46;74;60" in custom palette) to burn capsule
+            self.assertIn("46;74;60", out)
+
 
 if __name__ == "__main__":
     unittest.main()

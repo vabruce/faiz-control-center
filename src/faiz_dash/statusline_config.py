@@ -21,7 +21,21 @@ VALID_DOCK_RATIOS = (18, 22, 26, 30)
 VALID_MAX_WIDTHS = (0, 80, 90, 100, 120)
 
 MODULE_KEYS = ("context", "cache", "speed", "quota", "sessions", "colab", "mailbox", "freshness")
-CAPSULE_COLOR_KEYS = ("context", "cache", "speed", "gemini", "argon", "sessions", "colab", "mailbox", "freshness")
+CAPSULE_COLOR_KEYS = (
+    "context",
+    "cache",
+    "speed",
+    "gemini",
+    "argon",
+    "reset",
+    "sessions",
+    "model",
+    "workspace",
+    "burn",
+    "colab",
+    "mailbox",
+    "freshness",
+)
 VALID_CAPSULE_COLOR_TOKENS = ("auto", "blue", "green", "yellow", "red", "slate", "muted")
 COLOR_SLOTS = ("context", "ok", "warn", "alert", "muted")
 VALID_LANGUAGES = ("en", "zh")
